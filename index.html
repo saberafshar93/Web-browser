@@ -13,7 +13,6 @@
   .btn { height:32px; border:1px solid #888; border-radius:16px; background:#fff; cursor:pointer; font-size:13px; padding:0 14px; white-space:nowrap; }
   .btn:hover { background:#e8f0fe; }
   #go { background:#1a73e8; color:#fff; border-color:#1a73e8; font-weight:bold; }
-  #mode { height:32px; border:1px solid #888; border-radius:16px; background:#fff; font-size:12px; }
   #wrap { position:absolute; top:48px; left:0; right:0; bottom:0; }
   #frame { width:100%; height:100%; border:0; background:#fff; }
   #msg { position:absolute; top:60px; left:0; right:0; text-align:center; color:#666; font-size:14px; }
@@ -25,25 +24,34 @@
   <table><tr>
     <td style="width:1%"><button class="btn" id="go" type="button">برو (Go)</button></td>
     <td style="width:1%"><button class="btn" id="paste" type="button">پیست (Paste)</button></td>
-    <td><input id="url" type="text" placeholder="آدرس سایت را وارد کنید، مثلاً google.com"></td>
-    <td style="width:1%">
-      <select id="mode">
-        <option value="direct">مستقیم</option>
-        <option value="text">متنی (برای سایت‌های سنگین)</option>
-      </select>
-    </td>
+    <td><input id="url" type="text" placeholder="آدرس سایت را وارد کنید"></td>
+    <td style="width:1%"><button class="btn" id="cfg" type="button">تنظیم پروکسی</button></td>
   </tr></table>
 </div>
 
-<div id="msg">آدرس را وارد کنید یا پیست کنید و روی «برو» بزنید.</div>
+<div id="msg">آدرس را وارد یا پیست کنید و «برو» بزنید.<br>
+اگر سایت باز نشد، با «تنظیم پروکسی» آدرس Worker خود را وارد کنید.</div>
 <div id="wrap"><iframe id="frame" name="frame" src="about:blank"></iframe></div>
 
 <script>
 (function () {
+  // دامنه‌هایی که باید از پروکسی عبور کنند
+  var TARGET = 'proofeditor.public.springernature.app';
+  // آدرس Worker را اینجا بنویسید (یا با دکمه تنظیم پروکسی). مثال: https://xxx.workers.dev
+  var DEFAULT_PROXY = '';
+
   var url = document.getElementById('url');
   var frame = document.getElementById('frame');
   var msg = document.getElementById('msg');
-  var mode = document.getElementById('mode');
+
+  function getProxy() {
+    var p = '';
+    try { p = window.localStorage.getItem('proxyBase') || ''; } catch (e) {}
+    return p || DEFAULT_PROXY;
+  }
+  function setProxy(v) {
+    try { window.localStorage.setItem('proxyBase', v); } catch (e) {}
+  }
 
   function normalize(v) {
     v = v.replace(/^\s+|\s+$/g, '');
@@ -57,35 +65,38 @@
     if (!u) return;
     url.value = u;
     msg.style.display = 'none';
-    if (mode.value === 'text') {
-      // نسخه متنی/ساده‌شده صفحه از طریق سرویس خوانشگر
-      frame.src = 'https://r.jina.ai/' + u;
+
+    var m = u.match(/^https?:\/\/([^\/?#]+)(.*)$/i);
+    var proxy = getProxy();
+    if (m && m[1].toLowerCase() === TARGET && proxy) {
+      proxy = proxy.replace(/\/+$/, '');
+      frame.src = proxy + (m[2] || '/');
     } else {
       frame.src = u;
     }
   }
 
+  function fallbackPaste() {
+    var t = window.prompt('آدرس را اینجا پیست کنید (Ctrl+V):', '');
+    if (t) { url.value = t; go(); }
+  }
   function doPaste() {
     if (navigator.clipboard && navigator.clipboard.readText) {
       navigator.clipboard.readText().then(function (t) {
-        url.value = t;
-        go();
-      }, function () { fallbackPaste(); });
+        url.value = t; go();
+      }, fallbackPaste);
     } else {
       fallbackPaste();
     }
   }
-
-  function fallbackPaste() {
-    // مرورگرهای قدیمی: کادر پیست دستی
-    url.value = '';
-    url.focus();
-    var t = window.prompt('آدرس را اینجا پیست کنید (Ctrl+V):', '');
-    if (t) { url.value = t; go(); }
+  function config() {
+    var v = window.prompt('آدرس Worker (مثلاً https://xxx.workers.dev):', getProxy());
+    if (v !== null) setProxy(v.replace(/^\s+|\s+$/g, ''));
   }
 
   document.getElementById('go').onclick = go;
   document.getElementById('paste').onclick = doPaste;
+  document.getElementById('cfg').onclick = config;
   url.onkeydown = function (e) {
     e = e || window.event;
     if ((e.keyCode || e.which) === 13) { go(); return false; }
